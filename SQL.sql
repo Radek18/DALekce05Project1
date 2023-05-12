@@ -31,7 +31,9 @@ CREATE OR REPLACE TABLE t_radek_v_project_sql_primary_final AS (
 			cpc.`name` `product_category_name`,
 			YEAR(cp.`date_from`) `price_year`,
 			ROUND(AVG(cp.`value`), 2) `price_avg`,
-			'Kč' `price_unit`
+			'Kč' `price_unit`,
+			cpc.`price_value`,
+			cpc.`price_unit` `price_value_unit`
 		FROM czechia_price cp
 		JOIN czechia_price_category cpc
 			ON cp.`category_code` = cpc.`code`
@@ -58,6 +60,8 @@ CREATE OR REPLACE TABLE t_radek_v_project_sql_primary_final AS (
 		pr.`product_category_name`,
 		pr.`price_avg`,
 		pr.`price_unit`,
+		pr.`price_value`,
+		pr.`price_value_unit`,
 		e.`GDP`,
 		e.`GDP_unit`
 	FROM payroll pa
@@ -105,10 +109,108 @@ FROM t_radek_v_project_sql_secondary_final trvpssf;
 
 -- OTÁZKA 1.
 
+SELECT
+	`industry_branch_name`,
+	`year`,
+	`payroll_avg`,
+	`payroll_unit`
+FROM t_radek_v_project_sql_primary_final trvpspf
+GROUP BY
+	`industry_branch_name`,
+	`year`;
+
 -- OTÁZKA 2.
+
+SELECT
+	`industry_branch_name`,
+	`YEAR`,
+	`payroll_avg`,
+	`payroll_unit`,
+	`product_category_name`,
+	`price_avg`,
+	`price_unit`,
+	`price_value`,
+	`price_value_unit`,
+	ROUND(`payroll_avg` / `price_avg`) `payroll_unit / price_unit`
+FROM t_radek_v_project_sql_primary_final trvpspf
+WHERE 
+	`product_category_name` IN ('Chléb konzumní kmínový', 'Mléko polotučné pasterované')
+	AND `year` IN (2006, 2018)
+ORDER BY
+	`product_category_name`,
+	`year`;
 
 -- OTÁZKA 3.
 
+SELECT
+	t.`product_category_name`,
+	ROUND(AVG((t.`price_avg` / t2.`price_avg` - 1) * 100), 2) `avg_year_on_year_increase_%`
+FROM t_radek_v_project_sql_primary_final t
+JOIN t_radek_v_project_sql_primary_final t2
+	ON
+		t.`product_category_name` = t2.`product_category_name`
+		AND t.`year` = t2.`year` + 1
+GROUP BY t.`product_category_name`
+ORDER BY `avg_year_on_year_increase_%`;
+
 -- OTÁZKA 4.
 
+WITH payroll_price AS (
+	SELECT
+		`year`,
+		`payroll_avg`,
+		`payroll_unit`,
+		ROUND(AVG(`price_avg`), 2) `price_total_avg`,
+		`price_unit`
+	FROM t_radek_v_project_sql_primary_final t
+	WHERE
+		`year` BETWEEN 2006 AND 2018
+		AND `industry_branch_name` = 'Všechna odvětví'
+	GROUP BY `year`
+)
+SELECT
+	p.`year` `current_year`,
+	p.`payroll_avg` `current_payroll`,
+	p.`price_total_avg` `current_price`,
+	p2.`year` `last_year`,
+	p2.`payroll_avg` `last_payroll`,
+	p2.`price_total_avg` `last_price`,
+	ROUND((p.`payroll_avg` / p2.`payroll_avg` - 1) * 100, 2) `year_on_year_payroll_increase_%`,
+	ROUND((p.`price_total_avg` / p2.`price_total_avg` - 1) * 100, 2) `year_on_year_price_increase_%`,
+	ROUND(((p.`price_total_avg` / p2.`price_total_avg` - 1) * 100) - ((p.`payroll_avg` / p2.`payroll_avg` - 1) * 100), 2) `price_payroll_increase_diff`
+FROM payroll_price p
+JOIN payroll_price p2
+	ON p.`year` = p2.`year` + 1;
+
 -- OTÁZKA 5.
+
+WITH payroll_price AS (
+	SELECT
+		`year`,
+		`payroll_avg`,
+		`payroll_unit`,
+		ROUND(AVG(`price_avg`), 2) `price_total_avg`,
+		`price_unit`,
+		`GDP`,
+		`GDP_unit`
+	FROM t_radek_v_project_sql_primary_final t
+	WHERE
+		`year` BETWEEN 2006 AND 2018
+		AND `industry_branch_name` = 'Všechna odvětví'
+	GROUP BY `year`
+)
+SELECT
+	p.`year` `current_year`,
+	p.`payroll_avg` `current_payroll`,
+	p.`price_total_avg` `current_price`,
+	ROUND(p.`GDP`) `current_gdp`,
+	p2.`year` `last_year`,
+	p2.`payroll_avg` `last_payroll`,
+	p2.`price_total_avg` `last_price`,
+	ROUND(p2.`GDP`) `last_GDP`,
+	ROUND((p.`payroll_avg` / p2.`payroll_avg` - 1) * 100, 2) `year_on_year_payroll_increase_%`,
+	ROUND((p.`price_total_avg` / p2.`price_total_avg` - 1) * 100, 2) `year_on_year_price_increase_%`,
+	ROUND((p.`GDP` / p2.`GDP` - 1) * 100, 2) `year_on_year_GDP_increase_%`
+FROM payroll_price p
+JOIN payroll_price p2
+	ON p.`year` = p2.`year` + 1;
